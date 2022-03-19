@@ -1,0 +1,2 @@
+# SlimRaster
+Minimalist software rasterizer
