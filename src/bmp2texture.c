@@ -148,7 +148,26 @@ typedef struct BitmapHeader {
 //    u8 *src_pixel_data = file_data + (bitmap->header.data_offset - sizeof(BitmapHeader));
 //    for (u32 i = 0; i < pixel_data_size; i++) *trg_pixel_data = *src_pixel_data;
 
-void initTextureMip(TextureMip *mip, u16 width, u16 height) {
+
+typedef union TexelQuadLoader {
+    struct {vec4 TL, TR, BL, BR;};
+    vec4 quadrants[4];
+} TexelQuadLoader;
+
+typedef struct TextureMipLoader {
+    u16 width, height;
+    vec4 *texels;
+    TexelQuadLoader *texel_quads;
+} TextureMipLoader;
+
+typedef struct TextureLoader {
+    u16 width, height;
+    u8 mip_count;
+    bool wrap, mipmap;
+    TextureMipLoader *mips;
+} TextureLoader;
+
+void initTextureMipLoader(TextureMipLoader *mip, u16 width, u16 height) {
     mip->width = width;
     mip->height = height;
     mip->texels = (vec4*)malloc(sizeof(vec4) * width * height);
@@ -156,27 +175,22 @@ void initTextureMip(TextureMip *mip, u16 width, u16 height) {
     width++;
     height++;
 
-    mip->texel_quads      = (TexelQuad* )malloc(sizeof(TexelQuad ) * width * height);
-    mip->texel_quad_lines = (TexelQuad**)malloc(sizeof(TexelQuad*) * height);
-    mip->texel_quad_lines[0] = mip->texel_quads;
-    for (u16 y = 1; y < height; y++) mip->texel_quad_lines[y] = mip->texel_quad_lines[y - 1] + width;
+    mip->texel_quads = (TexelQuadLoader*)malloc(sizeof(TexelQuadLoader) * width * height);
 }
 
-void loadTextureMip(TextureMip *mip, bool wrap) {
-    TexelQuad *top_texel_quad_line    = mip->texel_quad_lines[0];
-    TexelQuad *bottom_texel_quad_line = mip->texel_quad_lines[mip->height];
-    TexelQuad *TL, *TR, *BL, *BR;
+void loadTextureMipLoader(TextureMipLoader *mip, bool wrap) {
+    TexelQuadLoader *TL, *TR, *BL, *BR;
     bool L, R, T, B;
     const u16 last_y = mip->height - 1;
     const u16 last_x = mip->width - 1;
     const u32 l = 0;
     const u32 r = mip->width;
+    const u16 stride = mip->width + 1;
     vec4 *texel = mip->texels;
-    TexelQuad *current_line, *next_line;
-    for (u16 y = 0; y < mip->height; y++) {
-        current_line = mip->texel_quad_lines[y];
-        next_line = mip->texel_quad_lines[y + 1];
-
+    TexelQuadLoader *top_texel_quad_line = mip->texel_quads;
+    TexelQuadLoader *bottom_texel_quad_line = top_texel_quad_line + mip->height * stride;
+    TexelQuadLoader *current_line = top_texel_quad_line, *next_line = top_texel_quad_line + stride;
+    for (u16 y = 0; y < mip->height; y++, current_line += stride, next_line += stride) {
         T = (y == 0);
         B = (y == last_y);
 
@@ -222,10 +236,9 @@ void loadTextureMip(TextureMip *mip, bool wrap) {
     }
 }
 
-void loadTexture(Texture *texture, u16 width, u16 height, bool wrap, bool mipmap, bool filter, u8 *texel_components, u8 bit_count) {
+void loadTextureLoader(TextureLoader *texture, u16 width, u16 height, bool wrap, bool mipmap, u8 *texel_components, u8 bit_count) {
     texture->wrap = wrap;
     texture->mipmap = mipmap;
-    texture->filter = filter;
     texture->width = width;
     texture->height = height;
     texture->mip_count = 1;
@@ -239,37 +252,34 @@ void loadTexture(Texture *texture, u16 width, u16 height, bool wrap, bool mipmap
             texture->mip_count++;
         }
 
-    texture->mips = (TextureMip*)malloc(sizeof(TextureMip) * texture->mip_count);
+    texture->mips = (TextureMipLoader*)malloc(sizeof(TextureMipLoader) * texture->mip_count);
 
-    initTextureMip(texture->mips, width, height);
+    initTextureMipLoader(texture->mips, width, height);
 
     vec4 *texel = texture->mips->texels;
     u8 i, *texel_component = texel_components;
     u16 x, y;
     for (y = 0; y < height; y++)
         for (x = 0; x < width; x++, texel++) {
-            if (bit_count == 32) {
-                for (i = 0; i < 4; i++, texel_component++)
-                    texel->components[i] = (f32)(*texel_component) * COLOR_COMPONENT_TO_FLOAT;
-            } else {
-                for (i = 0; i < 3; i++, texel_component++)
-                    texel->components[i] = (f32)(*texel_component) * COLOR_COMPONENT_TO_FLOAT;
-                texel->components[3] = texel->components[2];
-            }
+            texel->r = (f32)(*(texel_component++));
+            texel->g = (f32)(*(texel_component++));
+            texel->b = (f32)(*(texel_component++));
+            if (bit_count == 32) texel_component++;
         }
 
-    loadTextureMip(texture->mips, texture->wrap);
+    loadTextureMipLoader(texture->mips, texture->wrap);
 
     if (!texture->mipmap) return;
 
-    TextureMip *current_mip = texture->mips;
-    TextureMip *next_mip = current_mip + 1;
+    TextureMipLoader *current_mip = texture->mips;
+    TextureMipLoader *next_mip = current_mip + 1;
 
     mip_width  = texture->width;
     mip_height = texture->height;
 
-    TexelQuad *colors_quad;
+    TexelQuadLoader *colors_quad;
     u32 stride, offset, start;
+    f32 R, G, B;
 
     while (mip_width > 4 && mip_height > 4) {
         start = mip_width + 1;
@@ -278,7 +288,7 @@ void loadTexture(Texture *texture, u16 width, u16 height, bool wrap, bool mipmap
         mip_width  /= 2;
         mip_height /= 2;
 
-        initTextureMip(next_mip, mip_width, mip_height);
+        initTextureMipLoader(next_mip, mip_width, mip_height);
 
         for (y = 0; y < mip_height; y++) {
             offset = start + 1;
@@ -286,59 +296,130 @@ void loadTexture(Texture *texture, u16 width, u16 height, bool wrap, bool mipmap
             for (x = 0; x < mip_width; x++) {
                 colors_quad = current_mip->texel_quads + offset;
                 texel = next_mip->texels + (mip_width * y + x);
-                *texel = colors_quad->quadrants[0];
-                for (i = 1; i < 4; i++) *texel = addVec4(*texel, colors_quad->quadrants[i]);
-                *texel = scaleVec4(*texel, 0.25f);
+                R = colors_quad->quadrants[0].r;
+                G = colors_quad->quadrants[0].g;
+                B = colors_quad->quadrants[0].b;
+                for (i = 1; i < 4; i++) {
+                    R += colors_quad->quadrants[i].r;
+                    G += colors_quad->quadrants[i].g;
+                    B += colors_quad->quadrants[i].b;
+                }
+                texel->r = R * 0.25f;
+                texel->g = G * 0.25f;
+                texel->b = B * 0.25f;
                 offset += 2;
             }
 
             start += stride;
         }
 
-        loadTextureMip(next_mip, wrap);
+        loadTextureMipLoader(next_mip, wrap);
 
         current_mip++;
         next_mip++;
     }
 }
 
-int bmp2texture(char* bmp_file_path, char* texture_file_path, bool mipmap, bool wrap, bool filter) {
+
+void loadTexture(Texture *texture, u16 width, u16 height, bool wrap, bool mipmap, u8 *texel_components, u8 bit_count) {
+    TextureLoader texture_loader;
+    loadTextureLoader(&texture_loader, width, height, wrap, mipmap, texel_components, bit_count);
+
+    texture->wrap = wrap;
+    texture->mipmap = mipmap;
+    texture->width = width;
+    texture->height = height;
+    texture->mip_count = texture_loader.mip_count;
+    texture->mips = (TextureMip*)malloc(sizeof(TextureMip) * texture->mip_count);
+
+    TextureMip *mip = texture->mips;
+    TextureMipLoader *loader_mip = texture_loader.mips;
+    for (u8 i = 0; i < texture->mip_count; i++, mip++, loader_mip++) {
+        mip->width  = loader_mip->width;
+        mip->height = loader_mip->height;
+        mip->texel_quads = (TexelQuad*)malloc(sizeof(TexelQuad) * (mip->width + 1) * (mip->height + 1));
+
+        TexelQuad *texel_quad = mip->texel_quads;
+        TexelQuadLoader *loader_texel_quad = loader_mip->texel_quads;
+        u32 texel_quads_count = (u32)(mip->width + 1) * (u32)(mip->height + 1);
+        for (u32 t = 0; t < texel_quads_count; t++, texel_quad++, loader_texel_quad++) {
+            texel_quad->R.TL = (u8)(loader_texel_quad->TL.r);
+            texel_quad->G.TL = (u8)(loader_texel_quad->TL.g);
+            texel_quad->B.TL = (u8)(loader_texel_quad->TL.b);
+
+            texel_quad->R.TR = (u8)(loader_texel_quad->TR.r);
+            texel_quad->G.TR = (u8)(loader_texel_quad->TR.g);
+            texel_quad->B.TR = (u8)(loader_texel_quad->TR.b);
+
+            texel_quad->R.BL = (u8)(loader_texel_quad->BL.r);
+            texel_quad->G.BL = (u8)(loader_texel_quad->BL.g);
+            texel_quad->B.BL = (u8)(loader_texel_quad->BL.b);
+
+            texel_quad->R.BR = (u8)(loader_texel_quad->BR.r);
+            texel_quad->G.BR = (u8)(loader_texel_quad->BR.g);
+            texel_quad->B.BR = (u8)(loader_texel_quad->BR.b);
+
+        }
+    }
+}
+
+int bmp2texture(char* bmp_file_path, char* texture_file_path, bool mipmap, bool wrap) {
     BITMAPINFOHEADER bitmapInfoHeader;
     u8* texel_components = LoadBitmapFile(bmp_file_path, &bitmapInfoHeader);
 
     FILE* file;
     Texture texture;
-    loadTexture(&texture, bitmapInfoHeader.biWidth, bitmapInfoHeader.biHeight, wrap, mipmap, filter, texel_components, bitmapInfoHeader.biBitCount);
+    loadTexture(&texture, bitmapInfoHeader.biWidth, bitmapInfoHeader.biHeight, wrap, mipmap, texel_components, bitmapInfoHeader.biBitCount);
 
     file = fopen(texture_file_path, "wb");
 
     fwrite(&texture.width,  sizeof(u16), 1, file);
     fwrite(&texture.height, sizeof(u16), 1, file);
-    fwrite(&texture.filter,      sizeof(bool), 1, file);
-    fwrite(&texture.mipmap,      sizeof(bool), 1, file);
-    fwrite(&texture.wrap,      sizeof(bool), 1, file);
+    fwrite(&texture.mipmap, sizeof(bool), 1, file);
+    fwrite(&texture.wrap,   sizeof(bool), 1, file);
     fwrite(&texture.mip_count, sizeof(u8), 1, file);
 
     TextureMip *texture_mip = texture.mips;
     for (u8 mip_index = 0; mip_index < texture.mip_count; mip_index++, texture_mip++) {
         fwrite(&texture_mip->width,  sizeof(u16), 1, file);
         fwrite(&texture_mip->height, sizeof(u16), 1, file);
-        fwrite(texture_mip->texels, sizeof(vec4), texture_mip->width * texture_mip->height, file);
-
-        if (texture.filter)
-            fwrite(texture_mip->texel_quads, sizeof(TexelQuad), ((texture_mip->width + 1) * (texture_mip->height + 1)), file);
+        fwrite(texture_mip->texel_quads, sizeof(TexelQuad), ((texture_mip->width + 1) * (texture_mip->height + 1)), file);
     }
 
     fclose(file);
 
     return 0;
 }
+int EndsWith(const char *str, const char *suffix) {
+    if (!str || !suffix)
+        return 0;
+    size_t lenstr = strlen(str);
+    size_t lensuffix = strlen(suffix);
+    if (lensuffix >  lenstr)
+        return 0;
+    return strncmp(str + lenstr - lensuffix, suffix, lensuffix) == 0;
+}
 
 int main(int argc, char *argv[]) {
-    //return error if user does not provide exactly 4 arguments
-    if (argc == 6)
-        return bmp2texture(argv[1], argv[2], argv[3][0] == 'm', argv[4][0] == 'w', argv[5][0] == 'f');
+    // Error if less than 2 arguments were provided
+    bool valid_input = argc >= 3 && (EndsWith(argv[1], ".bmp") && (EndsWith(argv[2], ".texture")));
+    if (!valid_input) {
+        printf("Exactly 2 file paths need to be provided: A '.bmp' file (input) then a '.text' file (output)");
+        return 1;
+    }
 
-    printf("Exactly 2 file paths need to be provided: A '.bmp' file (input) then a '.text' file (output)");
-    return 1;
+    char* src_file_path = argv[1];
+    char* trg_file_path = argv[2];
+    bool mipmap = false;
+    bool wrap = false;
+    for (u8 i = 3; i < (u8)argc; i++) {
+        if (     argv[i][0] == '-' && argv[i][1] == 'm') mipmap = true;
+        else if (argv[i][0] == '-' && argv[i][1] == 'w') wrap = true;
+        else {
+            printf("Unknown argument: %s", argv[i]);
+            valid_input = false;
+            break;
+        }
+    }
+    return valid_input ? bmp2texture(src_file_path, trg_file_path, mipmap, wrap) : 1;
 }

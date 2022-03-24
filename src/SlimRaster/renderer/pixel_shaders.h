@@ -18,7 +18,7 @@ INLINE quat getNormalRotation(vec3 normal, f32 magnitude) {
     q.axis.x = normal.z;
     q.axis.y = 0;
     q.axis.z = normal.x;
-    q.amount = normal.y * magnitude;
+    q.amount = normal.y / magnitude;
     return normQuat(q);
 }
 
@@ -67,8 +67,10 @@ void shadePixelClassic(PixelShaderInputs *inputs, Scene *scene, Shaded *shaded, 
         if (shaded->material->texture_count > 1) {
             texture = &scene->textures[shaded->material->texture_ids[1]];
             texture_sample.v3 = sampleNormal(texture, inputs->UV, inputs->dUV);
-            quat normal_rotation = getNormalRotation(texture_sample.v3, shaded->material->normal_magnitude);
-            shaded->normal = mulVec3Quat(shaded->normal, normal_rotation);
+            if (shaded->material->normal_magnitude) {
+                quat normal_rotation = getNormalRotation(texture_sample.v3, shaded->material->normal_magnitude);
+                shaded->normal = mulVec3Quat(shaded->normal, normal_rotation);
+            }
         }
     }
 

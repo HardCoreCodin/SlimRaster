@@ -14,12 +14,15 @@ All features of <b>SlimEngine</b> are available here as well.<br>
 Additional features include rasterization facilities:<br>
 - Pixel Shaders that feed interpolated vertex attributes
 - Mesh shaders for object culling using axis-aligned bounding boxes
-- Frustum and back face triangle culling
-- Frustum triangle clipping (interpolates vertex attributes)
 - Perspective corrected barycentric coordinates
 - Tangent space derivatives for adaptive texture mip-level selection
 - Bi-linear filtered texture sampling with auto-selected mip levels
 - Anti aliasing (optional SSAA)
+- Frustum and back face triangle culling
+- Frustum triangle clipping with interpolates vertex attributes
+  <img src="src/examples/1_clipping_interpolation.gif" alt="SlimRaster" height="360"><br>
+- Normal maps with controllable strength
+  <img src="src/examples/2_normal_maps.gif" alt="SlimRaster" height="360"><br>
 
 * <b><u>obj2mesh</b>:</u> Also privided is a separate CLI tool for converting `.obj` files to `.mesh` files.<br>
   It is also written in plain C (so is compatible with C++)<br>

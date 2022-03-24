@@ -155,23 +155,23 @@ int obj2mesh(char* obj_file_path, char* mesh_file_path, bool invert_winding_orde
     fclose(file);
 
     // Dog/Monkey >
-    mat3 rot45 = getMat3Identity();
-    rot45.X.x = 0.70710678118f;
-    rot45.X.z = 0.70710678118f;
-    rot45.Z.x = -0.70710678118f;
-    rot45.Z.z = 0.70710678118f;
-    mat3 rot90 = mulMat3(rot45, rot45);
-    mat3 rot = mulMat3(rot45, rot90); // Dog
+//    mat3 rot45 = getMat3Identity();
+//    rot45.X.x = 0.70710678118f;
+//    rot45.X.z = 0.70710678118f;
+//    rot45.Z.x = -0.70710678118f;
+//    rot45.Z.z = 0.70710678118f;
+//    mat3 rot90 = mulMat3(rot45, rot45);
+//    mat3 rot = mulMat3(rot45, rot90); // Dog
 //    mat3 rot = rot90; // Monkey
-
-    vertex_position = mesh.vertex_normals;
-    for (u32 i = 0; i < mesh.normals_count; i++, vertex_position++)
-        *vertex_position = mulVec3Mat3(*vertex_position, rot);
+//
+//    vertex_position = mesh.vertex_normals;
+//    for (u32 i = 0; i < mesh.normals_count; i++, vertex_position++)
+//        *vertex_position = mulVec3Mat3(*vertex_position, rot);
     // Dog/Monkey <
 
     vertex_position = mesh.vertex_positions;
     for (u32 i = 0; i < mesh.vertex_count; i++, vertex_position++) {
-        *vertex_position = mulVec3Mat3(*vertex_position, rot); // Dog/Monkey
+//        *vertex_position = mulVec3Mat3(*vertex_position, rot); // Dog/Monkey
         mesh.aabb.min.x = mesh.aabb.min.x < vertex_position->x ? mesh.aabb.min.x : vertex_position->x;
         mesh.aabb.min.y = mesh.aabb.min.y < vertex_position->y ? mesh.aabb.min.y : vertex_position->y;
         mesh.aabb.min.z = mesh.aabb.min.z < vertex_position->z ? mesh.aabb.min.z : vertex_position->z;
@@ -190,13 +190,13 @@ int obj2mesh(char* obj_file_path, char* mesh_file_path, bool invert_winding_orde
     }
 
     // Dog/Monkey >
-    f32 scale = 0.1f; // dog
+//    f32 scale = 0.1f; // dog
 //    f32 scale = 4.0f; // dog
-    vertex_position = mesh.vertex_positions;
-    for (u32 i = 0; i < mesh.vertex_count; i++, vertex_position++)
-        *vertex_position = scaleVec3(*vertex_position, scale);
-    mesh.aabb.min = scaleVec3(mesh.aabb.min, scale);
-    mesh.aabb.max = scaleVec3(mesh.aabb.max, scale);
+//    vertex_position = mesh.vertex_positions;
+//    for (u32 i = 0; i < mesh.vertex_count; i++, vertex_position++)
+//        *vertex_position = scaleVec3(*vertex_position, scale);
+//    mesh.aabb.min = scaleVec3(mesh.aabb.min, scale);
+//    mesh.aabb.max = scaleVec3(mesh.aabb.max, scale);
     // Dog/Monkey <
 
     EdgeVertexIndices current_edge_vertex_indices, *edge_vertex_indices;
